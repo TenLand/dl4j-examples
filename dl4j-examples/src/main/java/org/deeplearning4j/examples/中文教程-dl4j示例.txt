@@ -1,0 +1,24 @@
+【第一部分 目录】
+       朱海龙/文
+
+由于研究方向和个人能力所限，本教程在示例的解释上详略各异，也存在不足甚至错误，欢迎各位指正、共同进步。
+本示例包含以下内容：
+（1）arbiter 寻找超参数最佳组合
+（2）convolution 卷积神经网络
+（3）data examples
+（4）feed forward 前馈神经网络
+（5）inference 推理
+（6）misc
+（7）nlp 自然语言处理
+（8）recurrent 循环神经网络
+（9）tic-tac-toe 井字棋游戏
+（10）transfer learning 迁移学习
+（11）unsupervised 无监督学习
+（12）user-interface 用户界面
+（13）utilities 工具类
+
+【第二部分 简介】
+【arbiter 超参数最佳组合】
+
+
+

@@ -1,0 +1,107 @@
+【arbiter】
+      朱海龙/文
+
+这是一个超参数自动优化示例。整体思路是准备需要调优的超参数，准备训练和测试数据集，配置神经网络，开始训练和测试
+示例代码如下：
+//首先，设置超参数自增步长，这里创建的的网络类似一个多层神经网络，只不过它既可以用固定超参数又可以用可变待优化超参数
+
+        ParameterSpace<Double> learningRateHyperparam = new ContinuousParameterSpace(0.0001, 0.1);  //所有值随机分布在0.001-0.1
+        ParameterSpace<Integer> layerSizeHyperparam = new IntegerParameterSpace(16,256);            //所有值随机分布在16-256
+
+        MultiLayerSpace hyperparameterSpace = new MultiLayerSpace.Builder()
+            //下面几个参数是固定参数
+            .weightInit(WeightInit.XAVIER)
+            .regularization(true)
+            .l2(0.0001)
+            //学习率：从不同的参数集学习，然后用在所有模型上
+            .learningRate(learningRateHyperparam)
+            .addLayer( new DenseLayerSpace.Builder()
+                    //Fixed values for this layer:
+                    .nIn(784)  //Fixed input: 28x28=784 pixels for MNIST
+                    .activation(Activation.LEAKYRELU)
+                    //One hyperparameter to infer: layer size
+                    .nOut(layerSizeHyperparam)
+                    .build())
+            .addLayer( new OutputLayerSpace.Builder()
+                .nOut(10)
+                .activation(Activation.SOFTMAX)
+                .lossFunction(LossFunctions.LossFunction.MCXENT)
+                .build())
+            .build();
+
+
+        //现在：定义一些配置选项。
+        // (a) 如何产生候选参数? (random search 还是 grid search)
+        CandidateGenerator candidateGenerator = new RandomSearchGenerator(hyperparameterSpace, null);    //Alternatively: new GridSearchCandidateGenerator<>(hyperparameterSpace, 5, GridSearchCandidateGenerator.Mode.RandomOrder);
+
+        // (b) 如何提供参数? 本示例选择一个返回 MNIST 的简单数据源
+        int nTrainEpochs = 2;
+        int batchSize = 64;
+        DataProvider dataProvider = new ExampleDataProvider(nTrainEpochs, batchSize);
+
+        // (c) 怎样保存通过测试的模型?
+        //     本例，模型存储到本地硬盘，保存的模型文件夹像这个样子 arbiterExample/0/, arbiterExample/1/, arbiterExample/2/, ...
+        String baseSaveDirectory = "arbiterExample/";
+        File f = new File(baseSaveDirectory);
+        if(f.exists()) f.delete();
+        f.mkdir();
+        ResultSaver modelSaver = new FileModelSaver(baseSaveDirectory);
+
+        // (d) 本质上我们在优化哪些参数?
+        //     本例，我们用测试数据集上的测试精度来评价TestSetAccuracyScoreFunction()，也可以用ScoreFunctions.testSetF1(), ScoreFunctions.testSetRegression(regressionValue) 等
+        ScoreFunction scoreFunction = new TestSetAccuracyScoreFunction();
+
+
+        // (e) 什么时候停止优化? 方法是设定定终止条件。
+        //     可以用时间或者其他条件作为终止条件
+        TerminationCondition[] terminationConditions = {
+            new MaxTimeCondition(15, TimeUnit.MINUTES),
+            new MaxCandidatesCondition(10)};
+
+
+
+        //配置选项准备完成，开始组装配置。
+        OptimizationConfiguration configuration = new OptimizationConfiguration.Builder()
+                .candidateGenerator(candidateGenerator)
+                .dataProvider(dataProvider)
+                .modelSaver(modelSaver)
+                .scoreFunction(scoreFunction)
+                .terminationConditions(terminationConditions)
+                .build();
+
+        //创建执行者:
+        IOptimizationRunner runner = new LocalOptimizationRunner(configuration, new MultiLayerNetworkTaskCreator());
+
+
+        //访问http://localhost:9000/arbiter启动用户界面进行观察
+        StatsStorage ss = new FileStatsStorage(new File("arbiterExampleUiStats.dl4j"));
+        runner.addListeners(new ArbiterStatusListener(ss));
+        UIServer.getInstance().attach(ss);
+
+
+        //开始优化超参数
+        runner.execute();
+
+
+        //打印出有关优化过程的一些基本统计信息。
+        String s = "Best score: " + runner.bestScore() + "\n" +
+            "Index of model with best score: " + runner.bestScoreCandidateIndex() + "\n" +
+            "Number of configurations evaluated: " + runner.numCandidatesCompleted() + "\n";
+        System.out.println(s);
+
+
+        //得到所有结果后，打印出最佳结果的相关详细信息。
+        int indexOfBestResult = runner.bestScoreCandidateIndex();
+        List<ResultReference> allResults = runner.getResults();
+
+        OptimizationResult bestResult = allResults.get(indexOfBestResult).getResult();
+        MultiLayerNetwork bestModel = (MultiLayerNetwork)bestResult.getResult();
+
+        System.out.println("\n\nConfiguration of best model:\n");
+        System.out.println(bestModel.getLayerWiseConfigurations().toJson());
+
+
+        //退出前等待一段时间
+        Thread.sleep(60000);
+        UIServer.getInstance().stop();
+    }
